@@ -1,0 +1,313 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: Inter, Roboto, 'Open Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+
+    --color-clinic-blue: #2563eb;
+    --color-clinic-teal: #06b6d4;
+    --color-clinic-violet: #7c3aed;
+
+    --color-clinic-ink: #0b1220;
+    --color-clinic-muted: #475569;
+    --color-clinic-bg: #f4f7fb;
+    --color-clinic-surface: rgba(255, 255, 255, 0.78);
+    --color-clinic-surface-2: rgba(255, 255, 255, 0.55);
+    --color-clinic-border: rgba(15, 23, 42, 0.12);
+    --color-clinic-ring: rgba(37, 99, 235, 0.35);
+
+    --color-clinic-danger: #ef4444;
+    --color-clinic-warning: #f59e0b;
+    --color-clinic-success: #10b981;
+
+    --shadow-clinic-card: 0 12px 32px rgba(2, 6, 23, 0.08);
+    --shadow-clinic-float: 0 18px 48px rgba(2, 6, 23, 0.14);
+}
+
+@layer base {
+    html.dark {
+        --color-clinic-ink: #e5e7eb;
+        --color-clinic-muted: rgba(226, 232, 240, 0.84);
+        --color-clinic-bg: #070a12;
+        --color-clinic-surface: rgba(15, 23, 42, 0.88);
+        --color-clinic-surface-2: rgba(2, 6, 23, 0.78);
+        --color-clinic-border: rgba(148, 163, 184, 0.26);
+        --color-clinic-ring: rgba(34, 211, 238, 0.35);
+        --shadow-clinic-card: 0 14px 44px rgba(0, 0, 0, 0.42);
+        --shadow-clinic-float: 0 24px 64px rgba(0, 0, 0, 0.55);
+    }
+
+    body {
+        background: var(--color-clinic-bg);
+        color: var(--color-clinic-ink);
+        font-family: var(--font-sans);
+        text-rendering: optimizeLegibility;
+    }
+
+    a {
+        text-decoration: none;
+        color: inherit;
+    }
+}
+
+@layer components {
+    .clinic-shell {
+        @apply min-h-screen;
+        background:
+            radial-gradient(900px circle at 18% 10%, color-mix(in oklab, var(--color-clinic-teal), white 75%) 0%, transparent 55%),
+            radial-gradient(900px circle at 85% 0%, color-mix(in oklab, var(--color-clinic-blue), white 78%) 0%, transparent 52%),
+            linear-gradient(180deg, var(--color-clinic-bg), color-mix(in oklab, var(--color-clinic-bg), black 3%));
+        color: var(--color-clinic-ink);
+    }
+
+    html.dark .clinic-shell {
+        background:
+            radial-gradient(900px circle at 18% 10%, color-mix(in oklab, var(--color-clinic-teal), black 78%) 0%, transparent 55%),
+            radial-gradient(900px circle at 85% 0%, color-mix(in oklab, var(--color-clinic-blue), black 80%) 0%, transparent 52%),
+            linear-gradient(180deg, var(--color-clinic-bg), color-mix(in oklab, var(--color-clinic-bg), black 12%));
+    }
+
+    .clinic-header {
+        @apply flex items-center justify-between gap-4;
+    }
+
+    .btn-group {
+        @apply flex flex-wrap items-center justify-end gap-2;
+    }
+
+    .clinic-brand {
+        @apply inline-flex items-center gap-3;
+    }
+
+    .clinic-brand-mark {
+        @apply h-11 w-11 rounded-2xl;
+        background:
+            radial-gradient(60% 60% at 30% 25%, rgba(255, 255, 255, 0.55) 0%, transparent 60%),
+            linear-gradient(135deg, var(--color-clinic-blue), var(--color-clinic-teal), var(--color-clinic-violet));
+        box-shadow: var(--shadow-clinic-card);
+    }
+
+    .clinic-card {
+        @apply rounded-2xl border p-5;
+        background: var(--color-clinic-surface);
+        border-color: var(--color-clinic-border);
+        box-shadow: var(--shadow-clinic-card);
+        backdrop-filter: blur(14px);
+    }
+
+    .clinic-subtle {
+        color: var(--color-clinic-muted);
+    }
+
+    .btn {
+        @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all duration-200 select-none whitespace-nowrap shrink-0;
+        background: var(--color-clinic-surface-2);
+        border-color: var(--color-clinic-border);
+        color: var(--color-clinic-ink);
+    }
+
+    .btn:hover {
+        background: color-mix(in oklab, var(--color-clinic-surface-2), black 6%);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 26px rgba(2, 6, 23, 0.10);
+    }
+
+    .btn:active {
+        transform: translateY(0px);
+        box-shadow: 0 6px 18px rgba(2, 6, 23, 0.10);
+    }
+
+    .btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 4px var(--color-clinic-ring), var(--shadow-clinic-card);
+    }
+
+    .btn:disabled,
+    .btn[aria-disabled='true'] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        pointer-events: none;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .btn-primary {
+        @apply border-transparent text-white;
+        background: linear-gradient(135deg, var(--color-clinic-blue), var(--color-clinic-teal));
+    }
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg, color-mix(in oklab, var(--color-clinic-blue), black 12%), color-mix(in oklab, var(--color-clinic-teal), black 12%));
+    }
+
+    .btn-teal {
+        @apply border-transparent text-white;
+        background: linear-gradient(135deg, var(--color-clinic-teal), var(--color-clinic-violet));
+    }
+
+    .btn-teal:hover {
+        background: linear-gradient(135deg, color-mix(in oklab, var(--color-clinic-teal), black 12%), color-mix(in oklab, var(--color-clinic-violet), black 12%));
+    }
+
+    .btn-ghost {
+        border-color: rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.10);
+        color: rgba(255, 255, 255, 0.92);
+    }
+
+    .btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.16);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 26px rgba(2, 6, 23, 0.18);
+    }
+
+    .btn-link {
+        @apply border-transparent bg-transparent underline underline-offset-4;
+        color: var(--color-clinic-muted);
+    }
+
+    .btn-link:hover {
+        @apply bg-transparent;
+        color: var(--color-clinic-ink);
+        transform: none;
+        box-shadow: none;
+    }
+
+    .btn-icon {
+        @apply h-12 w-12 min-w-12 rounded-full p-0;
+    }
+
+    .pill {
+        @apply inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium border;
+        border-color: var(--color-clinic-border);
+        background: var(--color-clinic-surface-2);
+        color: var(--color-clinic-muted);
+    }
+
+    .tone-blue {
+        background: rgba(59, 130, 246, 0.12);
+        border-color: rgba(59, 130, 246, 0.25);
+        color: rgb(30, 64, 175);
+    }
+
+    .tone-green {
+        background: rgba(16, 185, 129, 0.12);
+        border-color: rgba(16, 185, 129, 0.25);
+        color: rgb(6, 95, 70);
+    }
+
+    .tone-amber {
+        background: rgba(245, 158, 11, 0.14);
+        border-color: rgba(245, 158, 11, 0.25);
+        color: rgb(146, 64, 14);
+    }
+
+    .tone-red {
+        background: rgba(220, 38, 38, 0.12);
+        border-color: rgba(220, 38, 38, 0.25);
+        color: rgb(153, 27, 27);
+    }
+
+    html.dark .tone-blue {
+        background: rgba(59, 130, 246, 0.18);
+        border-color: rgba(59, 130, 246, 0.38);
+        color: rgb(191, 219, 254);
+    }
+
+    html.dark .tone-green {
+        background: rgba(16, 185, 129, 0.18);
+        border-color: rgba(16, 185, 129, 0.38);
+        color: rgb(167, 243, 208);
+    }
+
+    html.dark .tone-amber {
+        background: rgba(245, 158, 11, 0.18);
+        border-color: rgba(245, 158, 11, 0.38);
+        color: rgb(253, 230, 138);
+    }
+
+    html.dark .tone-red {
+        background: rgba(220, 38, 38, 0.18);
+        border-color: rgba(220, 38, 38, 0.38);
+        color: rgb(254, 202, 202);
+    }
+
+    .clinic-input {
+        @apply w-full rounded-xl border px-3 py-2 text-sm outline-none transition-all duration-200;
+        background: var(--color-clinic-surface);
+        border-color: var(--color-clinic-border);
+    }
+
+    .clinic-input:focus {
+        box-shadow: 0 0 0 4px var(--color-clinic-ring);
+        border-color: color-mix(in oklab, var(--color-clinic-border), var(--color-clinic-blue) 45%);
+    }
+
+    .clinic-fab {
+        @apply fixed inline-flex min-h-12 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold;
+        right: 18px;
+        bottom: 18px;
+        z-index: 40;
+        border-color: rgba(16, 185, 129, 0.35);
+        background: rgba(16, 185, 129, 0.95);
+        color: #053d2d;
+        box-shadow: var(--shadow-clinic-float);
+    }
+
+    .clinic-fab:hover {
+        background: rgba(16, 185, 129, 1);
+        transform: translateY(-1px);
+    }
+
+    .clinic-fab:active {
+        transform: translateY(0px);
+    }
+
+    .clinic-fab:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 4px var(--color-clinic-ring), var(--shadow-clinic-float);
+    }
+
+    @media (max-width: 640px) {
+        .clinic-fab {
+            right: 14px;
+            bottom: 14px;
+            @apply px-5 py-3;
+        }
+    }
+
+    .clinic-quick-btn {
+        @apply inline-flex min-h-12 items-center justify-center rounded-xl border px-3 py-2 text-xs font-medium transition-all duration-200 select-none;
+        border-color: var(--color-clinic-border);
+        background: var(--color-clinic-surface-2);
+        color: var(--color-clinic-ink);
+    }
+
+    .clinic-quick-btn:hover {
+        background: color-mix(in oklab, var(--color-clinic-surface-2), black 6%);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 26px rgba(2, 6, 23, 0.10);
+    }
+
+    .clinic-quick-btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 4px var(--color-clinic-ring), var(--shadow-clinic-card);
+    }
+
+    .clinic-quick-btn:disabled,
+    .clinic-quick-btn[aria-disabled='true'] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        pointer-events: none;
+        transform: none;
+        box-shadow: none;
+    }
+}
