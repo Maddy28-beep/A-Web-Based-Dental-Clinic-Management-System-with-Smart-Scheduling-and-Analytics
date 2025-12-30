@@ -97,7 +97,7 @@ class BillingService
         }
 
         if ($totalCents <= 0) {
-            return 'paid';
+            return 'unpaid';
         }
 
         if ($netPaidCents > 0 && $balanceCents > 0) {

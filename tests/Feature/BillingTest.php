@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Appointment;
 use App\Models\Bill;
 use App\Models\Dentist;
 use App\Models\Patient;
@@ -9,6 +10,7 @@ use App\Models\Payment;
 use App\Models\Procedure;
 use App\Models\ProcedurePrice;
 use App\Models\ProcedureTooth;
+use App\Models\Service;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -64,6 +66,181 @@ class BillingTest extends TestCase
             ->assertJsonPath('data.bill.patient_id', $patient->id)
             ->assertJsonPath('data.bill.total_cents', 5000)
             ->assertJsonPath('data.bill.items.0.procedure_id', $procedureId);
+    }
+
+    public function test_it_auto_creates_a_bill_when_an_appointment_is_completed(): void
+    {
+        $admin = User::create([
+            'name' => 'Admin User',
+            'email' => 'admin.appointmentbill@example.com',
+            'password' => 'password',
+            'role' => 'admin',
+        ]);
+        $this->actingAsStaff($admin);
+        $this->withoutMiddleware(VerifyCsrfToken::class);
+
+        $patient = Patient::create([
+            'full_name' => 'Appointment Bill Patient',
+            'phone' => '09170000022',
+        ]);
+
+        $dentist = Dentist::create([
+            'name' => 'Dr. Appointment',
+            'email' => 'dr.appointment@example.com',
+            'is_active' => true,
+        ]);
+
+        $service = Service::create([
+            'name' => 'Consultation',
+            'duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'is_active' => true,
+            'color' => null,
+        ]);
+
+        ProcedurePrice::create([
+            'procedure_type' => 'consultation',
+            'dentist_id' => null,
+            'base_price_cents' => 7000,
+            'per_tooth_cents' => 0,
+            'duration_minutes' => 15,
+            'is_active' => true,
+            'created_by_user_id' => $admin->id,
+        ]);
+
+        $startAt = CarbonImmutable::now()->startOfMinute();
+        $appointment = Appointment::create([
+            'booking_reference_code' => 'ABCD1234',
+            'patient_id' => $patient->id,
+            'dentist_id' => $dentist->id,
+            'service_id' => $service->id,
+            'service_duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'is_override' => false,
+            'override_reason' => null,
+            'patient_name' => $patient->full_name,
+            'patient_email' => null,
+            'patient_phone' => $patient->phone,
+            'start_at' => $startAt,
+            'end_at' => $startAt->addMinutes(15),
+            'status' => 'checked_in',
+            'checked_in_at' => $startAt,
+            'in_treatment_at' => null,
+            'completed_at' => null,
+            'cancelled_at' => null,
+            'no_show_at' => null,
+            'source' => 'staff',
+            'notes' => null,
+        ]);
+
+        $this->patchJson("/api/appointments/{$appointment->id}/status", [
+            'status' => 'completed',
+        ])->assertStatus(200);
+
+        $procedure = Procedure::query()
+            ->where('patient_id', $patient->id)
+            ->where('meta->appointment_id', $appointment->id)
+            ->first();
+        $this->assertNotNull($procedure);
+        $this->assertSame('consultation', (string) $procedure->procedure_type);
+
+        $billRes = $this->getJson('/api/bills?limit=10')->assertStatus(200);
+        $billId = (int) ($billRes->json('data.0.id') ?? 0);
+        $this->assertGreaterThan(0, $billId);
+
+        $billShowRes = $this->getJson("/api/bills/{$billId}")->assertStatus(200);
+        $billShowRes
+            ->assertJsonPath('data.bill.patient_id', $patient->id)
+            ->assertJsonPath('data.bill.total_cents', 7000)
+            ->assertJsonPath('data.bill.items.0.procedure_id', $procedure->id);
+    }
+
+    public function test_it_auto_creates_patient_and_bill_when_unlinked_appointment_is_completed(): void
+    {
+        $admin = User::create([
+            'name' => 'Admin User',
+            'email' => 'admin.unlinkedbill@example.com',
+            'password' => 'password',
+            'role' => 'admin',
+        ]);
+        $this->actingAsStaff($admin);
+        $this->withoutMiddleware(VerifyCsrfToken::class);
+
+        $dentist = Dentist::create([
+            'name' => 'Dr. Unlinked',
+            'email' => 'dr.unlinked@example.com',
+            'is_active' => true,
+        ]);
+
+        $service = Service::create([
+            'name' => 'Consultation',
+            'duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'is_active' => true,
+            'color' => null,
+        ]);
+
+        ProcedurePrice::create([
+            'procedure_type' => 'consultation',
+            'dentist_id' => null,
+            'base_price_cents' => 8000,
+            'per_tooth_cents' => 0,
+            'duration_minutes' => 15,
+            'is_active' => true,
+            'created_by_user_id' => $admin->id,
+        ]);
+
+        $startAt = CarbonImmutable::now()->startOfMinute();
+        $appointment = Appointment::create([
+            'booking_reference_code' => 'UNLINK1234',
+            'patient_id' => null,
+            'dentist_id' => $dentist->id,
+            'service_id' => $service->id,
+            'service_duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'is_override' => false,
+            'override_reason' => null,
+            'patient_name' => 'yoyong',
+            'patient_email' => null,
+            'patient_phone' => '062623323',
+            'start_at' => $startAt,
+            'end_at' => $startAt->addMinutes(15),
+            'status' => 'checked_in',
+            'checked_in_at' => $startAt,
+            'in_treatment_at' => null,
+            'completed_at' => null,
+            'cancelled_at' => null,
+            'no_show_at' => null,
+            'source' => 'staff',
+            'notes' => null,
+        ]);
+
+        $this->patchJson("/api/appointments/{$appointment->id}/status", [
+            'status' => 'completed',
+        ])->assertStatus(200);
+
+        $appointment = $appointment->fresh();
+        $this->assertNotNull($appointment->patient_id);
+
+        $patient = Patient::query()->find($appointment->patient_id);
+        $this->assertNotNull($patient);
+        $this->assertSame('yoyong', (string) $patient->full_name);
+
+        $procedure = Procedure::query()
+            ->where('patient_id', $patient->id)
+            ->where('meta->appointment_id', $appointment->id)
+            ->first();
+        $this->assertNotNull($procedure);
+
+        $billRes = $this->getJson("/api/bills?patient_id={$patient->id}&limit=10")->assertStatus(200);
+        $billId = (int) ($billRes->json('data.0.id') ?? 0);
+        $this->assertGreaterThan(0, $billId);
+
+        $billShowRes = $this->getJson("/api/bills/{$billId}")->assertStatus(200);
+        $billShowRes
+            ->assertJsonPath('data.bill.patient_id', $patient->id)
+            ->assertJsonPath('data.bill.total_cents', 8000)
+            ->assertJsonPath('data.bill.items.0.procedure_id', $procedure->id);
     }
 
     public function test_it_creates_bill_records_partial_and_full_payments_and_allows_refunds(): void

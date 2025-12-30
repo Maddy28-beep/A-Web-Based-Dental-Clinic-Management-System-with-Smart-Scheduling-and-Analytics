@@ -8,10 +8,14 @@ use App\Models\ActivityLog;
 use App\Models\Appointment;
 use App\Models\AppointmentCheckin;
 use App\Models\AppointmentStatusLog;
+use App\Models\Bill;
+use App\Models\BillItem;
 use App\Models\Dentist;
 use App\Models\Patient;
+use App\Models\Procedure;
 use App\Models\Service;
 use App\Services\AppointmentBookingService;
+use App\Services\BillingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -264,7 +268,7 @@ class AppointmentController extends Controller
         ]);
     }
 
-    public function updateStatus(Request $request, Appointment $appointment): JsonResponse
+    public function updateStatus(Request $request, Appointment $appointment, BillingService $billing): JsonResponse
     {
         $this->requirePermission($request, 'appointments.update_status');
 
@@ -275,7 +279,7 @@ class AppointmentController extends Controller
         $to = strtolower(trim((string) $validated['status']));
         $now = CarbonImmutable::now();
 
-        $appointment = DB::transaction(function () use ($request, $appointment, $to, $now) {
+        $appointment = DB::transaction(function () use ($request, $appointment, $to, $now, $billing) {
             $locked = Appointment::query()->whereKey($appointment->id)->lockForUpdate()->firstOrFail();
             $from = (string) $locked->status;
 
@@ -301,11 +305,11 @@ class AppointmentController extends Controller
                 abort(422, 'Invalid current appointment status.');
             }
 
-            if ($to === $from) {
+            if ($to === $from && $to !== 'completed') {
                 return $locked;
             }
 
-            if (! in_array($to, $allowed[$from], true)) {
+            if ($to !== $from && ! in_array($to, $allowed[$from], true)) {
                 abort(409, 'Invalid status transition.');
             }
 
@@ -337,32 +341,192 @@ class AppointmentController extends Controller
                 'no_show_at',
             ]);
 
-            AppointmentStatusLog::create([
-                'appointment_id' => $locked->id,
-                'from_status' => $from,
-                'to_status' => $to,
-                'changed_by_user_id' => $request->user()?->id,
-                'changed_at' => $now,
-                'meta' => null,
-            ]);
+            if ($to !== $from) {
+                AppointmentStatusLog::create([
+                    'appointment_id' => $locked->id,
+                    'from_status' => $from,
+                    'to_status' => $to,
+                    'changed_by_user_id' => $request->user()?->id,
+                    'changed_at' => $now,
+                    'meta' => null,
+                ]);
 
-            ActivityLog::create([
-                'actor_user_id' => $request->user()?->id,
-                'patient_id' => $locked->patient_id,
-                'action' => 'appointment.status_updated',
-                'subject_type' => Appointment::class,
-                'subject_id' => $locked->id,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'meta' => [
-                    'actor_role' => $request->user()?->role,
-                    'from' => $from,
-                    'to' => $to,
-                    'before' => $before,
-                    'after' => $after,
-                ],
-                'created_at' => now(),
-            ]);
+                ActivityLog::create([
+                    'actor_user_id' => $request->user()?->id,
+                    'patient_id' => $locked->patient_id,
+                    'action' => 'appointment.status_updated',
+                    'subject_type' => Appointment::class,
+                    'subject_id' => $locked->id,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'meta' => [
+                        'actor_role' => $request->user()?->role,
+                        'from' => $from,
+                        'to' => $to,
+                        'before' => $before,
+                        'after' => $after,
+                    ],
+                    'created_at' => now(),
+                ]);
+            }
+
+            if ($to === 'completed' && ! $locked->patient_id) {
+                $canConvertToPatient = (bool) $request->user()?->hasPermission('appointments.convert_to_patient');
+                if ($canConvertToPatient) {
+                    $email = $locked->patient_email ? strtolower(trim((string) $locked->patient_email)) : null;
+                    $phone = $locked->patient_phone ? trim((string) $locked->patient_phone) : null;
+
+                    $patient = null;
+                    if ($email) {
+                        $patient = Patient::query()->where('email', $email)->first();
+                    }
+                    if (! $patient && $phone) {
+                        $patient = Patient::query()->where('phone', $phone)->first();
+                    }
+                    if (! $patient) {
+                        $patient = Patient::create([
+                            'full_name' => $locked->patient_name,
+                            'email' => $email ?: null,
+                            'phone' => $phone ?: null,
+                            'date_of_birth' => null,
+                        ]);
+                    }
+
+                    $locked->update([
+                        'patient_id' => $patient->id,
+                        'patient_name' => $patient->full_name,
+                        'patient_phone' => $patient->phone,
+                        'patient_email' => $patient->email,
+                    ]);
+
+                    ActivityLog::create([
+                        'actor_user_id' => $request->user()?->id,
+                        'patient_id' => $patient->id,
+                        'action' => 'appointment.converted_to_patient',
+                        'subject_type' => Appointment::class,
+                        'subject_id' => $locked->id,
+                        'ip_address' => $request->ip(),
+                        'user_agent' => $request->userAgent(),
+                        'meta' => [
+                            'patient_id' => $patient->id,
+                            'auto' => true,
+                        ],
+                        'created_at' => now(),
+                    ]);
+
+                    $locked = $locked->fresh();
+                }
+            }
+
+            if ($to === 'completed' && $locked->patient_id && $locked->service_id) {
+                $service = Service::query()->select(['id', 'name'])->find($locked->service_id);
+                $procedureType = $service?->name ? strtolower(trim((string) $service->name)) : null;
+
+                if ($procedureType) {
+                    $procedure = Procedure::query()
+                        ->where('patient_id', $locked->patient_id)
+                        ->where('meta->appointment_id', $locked->id)
+                        ->orderByDesc('id')
+                        ->first();
+
+                    if (! $procedure) {
+                        $procedure = Procedure::create([
+                            'patient_id' => $locked->patient_id,
+                            'visit_id' => null,
+                            'dentist_id' => $locked->dentist_id,
+                            'procedure_type' => $procedureType,
+                            'description' => $service?->name,
+                            'cost_cents' => null,
+                            'performed_at' => $locked->completed_at ?? $now,
+                            'requires_allergy_tags' => null,
+                            'allergy_conflicts' => null,
+                            'confirmed_by_user_id' => null,
+                            'confirmed_at' => null,
+                            'created_by_user_id' => $request->user()?->id,
+                            'meta' => [
+                                'source' => 'appointment_auto',
+                                'appointment_id' => $locked->id,
+                                'service_id' => $locked->service_id,
+                                'booking_reference_code' => $locked->booking_reference_code,
+                            ],
+                        ]);
+                    }
+
+                    $billItem = BillItem::query()
+                        ->where('procedure_id', $procedure->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $billItem) {
+                        $bill = Bill::create([
+                            'patient_id' => $locked->patient_id,
+                            'visit_id' => null,
+                            'dentist_id' => $locked->dentist_id,
+                            'status' => 'unpaid',
+                            'currency' => 'PHP',
+                            'subtotal_cents' => 0,
+                            'add_ons_cents' => 0,
+                            'discount_cents' => 0,
+                            'total_cents' => 0,
+                            'paid_cents' => 0,
+                            'balance_cents' => 0,
+                            'locked_at' => null,
+                            'locked_by_user_id' => null,
+                            'due_at' => null,
+                            'meta' => [
+                                'source' => 'appointment_auto',
+                                'appointment_id' => $locked->id,
+                                'procedure_id' => $procedure->id,
+                            ],
+                        ]);
+
+                        $price = $billing->resolvePrice($procedureType, $locked->dentist_id);
+                        $baseTotal = $price ? $billing->computeBaseTotalCents($price, 1) : 0;
+                        $total = $billing->computeItemTotalCents($baseTotal, 0, 0, null);
+
+                        BillItem::create([
+                            'bill_id' => $bill->id,
+                            'procedure_id' => $procedure->id,
+                            'procedure_type' => $procedureType,
+                            'description' => $service?->name,
+                            'tooth_count' => 1,
+                            'base_price_cents' => $baseTotal,
+                            'add_ons_cents' => 0,
+                            'discount_cents' => 0,
+                            'override_price_cents' => null,
+                            'total_cents' => $total,
+                            'meta' => $price ? [
+                                'price_id' => $price->id,
+                                'dentist_id' => $price->dentist_id,
+                                'per_tooth_cents' => $price->per_tooth_cents,
+                            ] : null,
+                        ]);
+
+                        $billing->recomputeBillTotals($bill);
+                    } else {
+                        $bill = Bill::query()->whereKey($billItem->bill_id)->lockForUpdate()->first();
+                        if ($bill) {
+                            $price = $billing->resolvePrice($procedureType, $locked->dentist_id);
+                            if ($price && (int) $billItem->total_cents <= 0 && $billItem->override_price_cents === null) {
+                                $baseTotal = $billing->computeBaseTotalCents($price, 1);
+                                $total = $billing->computeItemTotalCents($baseTotal, 0, 0, null);
+
+                                $billItem->update([
+                                    'base_price_cents' => $baseTotal,
+                                    'total_cents' => $total,
+                                    'meta' => [
+                                        'price_id' => $price->id,
+                                        'dentist_id' => $price->dentist_id,
+                                        'per_tooth_cents' => $price->per_tooth_cents,
+                                    ],
+                                ]);
+                            }
+
+                            $billing->recomputeBillTotals($bill);
+                        }
+                    }
+                }
+            }
 
             return $locked;
         });

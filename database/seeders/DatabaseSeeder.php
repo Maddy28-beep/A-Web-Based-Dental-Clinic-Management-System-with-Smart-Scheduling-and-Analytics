@@ -14,6 +14,7 @@ use App\Models\MedicalHistory;
 use App\Models\Patient;
 use App\Models\Permission;
 use App\Models\Procedure;
+use App\Models\ProcedurePrice;
 use App\Models\ProcedureTooth;
 use App\Models\Role;
 use App\Models\Service;
@@ -158,6 +159,65 @@ class DatabaseSeeder extends Seeder
         ])->map(function (array $data) {
             return Service::updateOrCreate(['name' => $data['name']], $data);
         })->values();
+
+        $resolveDefaults = function (string $procedureType): array {
+            $t = strtolower(trim($procedureType));
+
+            if (str_contains($t, 'consult')) {
+                return ['base' => 5000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'clean')) {
+                return ['base' => 7000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'fill')) {
+                return ['base' => 10000, 'per_tooth' => 2000];
+            }
+            if (str_contains($t, 'extract')) {
+                return ['base' => 8000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'root') && str_contains($t, 'canal')) {
+                return ['base' => 15000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'brace')) {
+                return ['base' => 20000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'crown')) {
+                return ['base' => 12000, 'per_tooth' => 0];
+            }
+            if (str_contains($t, 'whiten')) {
+                return ['base' => 9000, 'per_tooth' => 0];
+            }
+
+            return ['base' => 5000, 'per_tooth' => 0];
+        };
+
+        foreach ($services as $service) {
+            $type = strtolower(trim((string) $service->name));
+            if ($type === '') {
+                continue;
+            }
+
+            $exists = ProcedurePrice::query()
+                ->where('procedure_type', $type)
+                ->whereNull('dentist_id')
+                ->where('is_active', true)
+                ->exists();
+
+            if ($exists) {
+                continue;
+            }
+
+            $defaults = $resolveDefaults($type);
+            ProcedurePrice::create([
+                'procedure_type' => $type,
+                'dentist_id' => null,
+                'base_price_cents' => (int) $defaults['base'],
+                'per_tooth_cents' => (int) $defaults['per_tooth'],
+                'duration_minutes' => (int) $service->duration_minutes,
+                'is_active' => true,
+                'created_by_user_id' => $admin->id,
+            ]);
+        }
 
         $dentists = collect([
             ['name' => 'Dr. Maria Santos', 'email' => 'maria.santos@example.com', 'phone' => '0917-111-2233', 'specialty' => 'General Dentistry', 'is_active' => true],
